@@ -50,7 +50,7 @@ python scripts/build_lambda.py
 ## Stato del progetto
 
 Deploy AWS e verifica end-to-end completati.
-Pipeline GitHub Actions con OIDC in preparazione.
+Pipeline GitHub Actions con OIDC operativa: test e validazione sulle pull request, deploy e verifica API sui push a main.
 
 ## Limiti attuali
 
