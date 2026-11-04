@@ -18,7 +18,7 @@ def main():
     exported = json.loads(subprocess.check_output(
         [
             "aws", "configure", "export-credentials",
-            "--profile", "portfolio", "--format", "process",
+            "--format", "process",
         ],
         text=True,
     ))
