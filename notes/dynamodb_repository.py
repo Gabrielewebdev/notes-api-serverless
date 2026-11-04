@@ -1,6 +1,7 @@
 from dataclasses import asdict
 
 from notes.domain import Note
+from notes.service import NotePage
 
 
 class DynamoDBNoteRepository:
@@ -18,25 +19,28 @@ class DynamoDBNoteRepository:
         item = result.get("Item")
         return Note(**item) if item is not None else None
 
-    def list(self) -> list[Note]:
-        notes = []
-        options = {"ConsistentRead": True}
+    def list_page(
+        self, limit: int = 20, cursor: str | None = None
+    ) -> NotePage:
+        options = {
+            "ConsistentRead": True,
+            "Limit": limit,
+        }
 
-        while True:
-            result = self.table.scan(**options)
-            notes.extend(Note(**item) for item in result.get("Items", []))
+        if cursor is not None:
+            options["ExclusiveStartKey"] = {"id": cursor}
 
-            last_key = result.get("LastEvaluatedKey")
-            if not last_key:
-                break
+        result = self.table.scan(**options)
+        notes = [Note(**item) for item in result.get("Items", [])]
+        last_key = result.get("LastEvaluatedKey")
 
-            options["ExclusiveStartKey"] = last_key
-
-        return sorted(
-            notes,
-            key=lambda note: (note.created_at, note.id),
-            reverse=True,
+        return NotePage(
+            notes=notes,
+            next_cursor=last_key["id"] if last_key else None,
         )
+
+    def list(self) -> list[Note]:
+        return self.list_page().notes
 
     def delete(self, note_id: str) -> bool:
         result = self.table.delete_item(

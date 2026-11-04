@@ -2,7 +2,9 @@ import json
 import subprocess
 import time
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
@@ -33,6 +35,7 @@ def main():
         time.sleep(0.6)
         body = None if data is None else json.dumps(data).encode("utf-8")
         url = api_url + path
+
         signed = AWSRequest(
             method=method,
             url=url,
@@ -64,31 +67,80 @@ def main():
 
         return json.loads(text) if text else None
 
-    note_id = None
+    created = []
+    marker = str(uuid4())
+
     try:
-        created = call(
-            "POST", "/notes", 201,
-            {"title": "Test AWS", "content": "Verifica end-to-end"},
-        )
-        note_id = created["id"]
-        path = f"/notes/{note_id}"
+        for number in range(3):
+            note = call(
+                "POST", "/notes", 201,
+                {
+                    "title": f"Smoke test {marker} - {number}",
+                    "content": "Verifica end-to-end e paginazione",
+                },
+            )
+            created.append(note)
 
-        retrieved = call("GET", path, 200)
-        assert retrieved == created, "La nota letta non coincide"
+        for note in created:
+            retrieved = call("GET", f"/notes/{note['id']}", 200)
+            assert retrieved == note, "La nota letta non coincide"
 
-        listed = call("GET", "/notes", 200)
-        assert created in listed["notes"], "Nota assente dall'elenco"
+        expected_ids = {note["id"] for note in created}
+        seen_ids = set()
+        used_cursors = set()
+        cursor = None
+        pages = 0
 
+        for _ in range(100):
+            query = {"limit": "2"}
+            if cursor is not None:
+                query["cursor"] = cursor
+
+            page = call("GET", "/notes?" + urlencode(query), 200)
+            notes = page["notes"]
+
+            assert len(notes) <= 2, "Limite della pagina non rispettato"
+
+            for note in notes:
+                assert note["id"] not in seen_ids, "Nota duplicata tra pagine"
+                seen_ids.add(note["id"])
+
+            pages += 1
+            cursor = page.get("next_cursor")
+
+            if cursor is None:
+                break
+
+            assert cursor not in used_cursors, "Cursore ripetuto"
+            used_cursors.add(cursor)
+        else:
+            raise RuntimeError("Superato il limite di 100 pagine del test")
+
+        assert expected_ids <= seen_ids, "Note di prova assenti dall'elenco"
+        assert pages >= 2, "La verifica non ha attraversato più pagine"
+
+        call("GET", "/notes?limit=0", 400)
+        call("GET", "/notes?limit=101", 400)
+        call("GET", "/notes?cursor=invalid%2Fcursor", 400)
         call("POST", "/notes", 400, {"title": ""})
 
-        call("DELETE", path, 204)
-        note_id = None
-
-        call("GET", path, 404)
-        print("TUTTE LE VERIFICHE SUPERATE")
     finally:
-        if note_id is not None:
-            call("DELETE", f"/notes/{note_id}", 204)
+        cleanup_errors = []
+
+        for note in created:
+            try:
+                path = f"/notes/{note['id']}"
+                call("DELETE", path, 204)
+                call("GET", path, 404)
+            except Exception as error:
+                cleanup_errors.append((note["id"], str(error)))
+
+        if cleanup_errors:
+            raise RuntimeError(
+                f"Pulizia delle note di prova incompleta: {cleanup_errors}"
+            )
+
+    print("TUTTE LE VERIFICHE SUPERATE, INCLUSA LA PAGINAZIONE")
 
 
 if __name__ == "__main__":

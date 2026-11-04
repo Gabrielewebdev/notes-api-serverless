@@ -73,7 +73,7 @@ def test_handler_rejects_invalid_encoding(service, body):
 
 def test_database_errors_propagate(monkeypatch):
     service = Mock()
-    service.list.side_effect = RuntimeError("Database non disponibile")
+    service.list_page.side_effect = RuntimeError("Database non disponibile")
     monkeypatch.setattr(lambda_handler, "get_service", lambda: service)
     event = make_event("GET", "/notes")
 
