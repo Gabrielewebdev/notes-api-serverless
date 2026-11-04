@@ -65,7 +65,7 @@ senza firma è il comportamento previsto.
 | notes/http.py | Gestione delle richieste e risposte HTTP |
 | notes/dynamodb_repository.py | Persistenza DynamoDB |
 | notes/lambda_handler.py | Adattatore per gli eventi API Gateway |
-| tests/ | 47 test automatici locali |
+| tests/ | 74 test automatici locali |
 | infra/ | Infrastruttura Terraform |
 | scripts/build_lambda.py | Pacchetto ZIP con codice e dipendenze |
 | scripts/smoke_test.py | Verifica delle operazioni sull'API distribuita |
@@ -88,7 +88,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Risultato verificato: 47 test superati.
+Risultato verificato: 74 test superati.
 
 I test locali usano un repository in memoria o risposte DynamoDB simulate.
 Non richiedono risorse AWS.
@@ -210,12 +210,13 @@ Non sono configurate notifiche email.
 | Autenticazione IAM | Accesso riservato a identità AWS autorizzate |
 | Repository separato dalla logica | Riutilizzo del codice e test senza AWS |
 | Locking S3 nativo | Coordinamento dello stato senza tabella di locking aggiuntiva |
-| Scan per l'elenco | Semplice per piccoli volumi; legge tutta la tabella |
+| Scan paginata | Una richiesta DynamoDB per pagina, con limite e cursore |
 | Nessuna separazione per utente | Le identità autorizzate accedono allo stesso insieme di note |
 
-L'elenco gestisce internamente le pagine DynamoDB, ma restituisce tutte
-le note in una sola risposta HTTP. Per volumi maggiori occorrono
-paginazione esposta dall'API e un modello di accesso adeguato.
+L'elenco restituisce una pagina alla volta: 20 note per impostazione
+predefinita, massimo 100. L'eventuale next_cursor permette di continuare.
+La scansione non garantisce ordine cronologico né una fotografia
+immutabile della tabella durante modifiche concorrenti.
 
 Non sono configurati backup applicativi o point-in-time recovery
 della tabella. Il versioning S3 protegge le versioni dello stato Terraform,
@@ -262,3 +263,114 @@ della distruzione e alla verifica del risultato.
 
 Le risorse del portfolio del progetto 1 appartengono a una configurazione
 separata e non sono incluse nello stato di questo progetto.
+
+## Paginazione HTTP
+
+Richieste supportate:
+
+```text
+GET /notes
+GET /notes?limit=5
+GET /notes?limit=5&cursor=VALORE_RICEVUTO
+```
+
+La risposta contiene notes e, se la scansione può continuare, next_cursor.
+Per proseguire, passare next_cursor come parametro cursor.
+L'assenza di next_cursor indica la fine della scansione.
+
+Il limite ammesso è da 1 a 100. Parametri invalidi producono 400.
+Il cursore va riutilizzato come ricevuto: non è un numero di pagina.
+Una pagina successiva può essere vuota se DynamoDB aveva restituito
+una chiave di continuazione al confine della scansione.
+
+Lo smoke test verifica più pagine, assenza di duplicati sui dati stabili
+del laboratorio, limiti invalidi e pulizia delle note create.
+
+## Esempi curl autenticati
+
+Prerequisiti: curl con supporto --aws-sigv4, sessione AWS CLI attiva
+e permesso execute-api:Invoke sull'API.
+
+Il seguente blocco usa una subshell: le credenziali temporanee esportate
+rimangono disponibili soltanto al suo interno.
+
+```bash
+(
+  export AWS_PROFILE=portfolio
+  API_URL=$(terraform -chdir=infra output -raw api_url)
+  eval "$(aws configure export-credentials --format env)"
+
+  curl --fail-with-body \
+    --aws-sigv4 "aws:amz:us-east-1:execute-api" \
+    --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+    --header "X-Amz-Security-Token: $AWS_SESSION_TOKEN" \
+    --header "Content-Type: application/json" \
+    --data '{"title":"Nota da curl","content":"Prova autenticata"}' \
+    "$API_URL/notes"
+
+  curl --fail-with-body \
+    --aws-sigv4 "aws:amz:us-east-1:execute-api" \
+    --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+    --header "X-Amz-Security-Token: $AWS_SESSION_TOKEN" \
+    "$API_URL/notes?limit=5"
+)
+```
+
+La nota creata da questo esempio rimane nella tabella.
+Per una prova con pulizia automatica usare scripts/smoke_test.py.
+Non pubblicare credenziali, token o header Authorization nei log.
+
+## Variabili Terraform
+
+| Variabile | Default | Uso |
+|---|---|---|
+| project_name | notes-api | Prefisso dei nomi delle risorse |
+| environment | lab | Tag Environment; valori lab, dev, prod |
+
+I valori predefiniti mantengono i nomi delle risorse esistenti.
+Cambiare project_name può richiedere sostituzioni e adeguamenti IAM.
+Cambiare soltanto environment non crea un ambiente indipendente.
+
+Il backend è configurato separatamente: Terraform non accetta queste
+variabili nel blocco backend. Ambienti indipendenti richiedono stati
+separati e nomi di risorse non in conflitto.
+
+## Scelte da spiegare al colloquio
+
+- HTTP API: adatta a queste route e all'integrazione Lambda.
+  REST API offre ulteriori funzionalità, per esempio usage plan con
+  API key e validazione delle richieste gestita da API Gateway.
+- Ruolo Lambda: consente PutItem, GetItem, Scan e DeleteItem soltanto
+  sulla tabella delle note, più la scrittura nel proprio gruppo log.
+  È distinto dal ruolo usato da GitHub per distribuire l'infrastruttura.
+- Terraform state: associa le risorse dichiarate a quelle reali.
+  S3 lo rende condiviso; il locking coordina le operazioni che lo modificano.
+- Cold start: preparazione di un nuovo ambiente di esecuzione Lambda.
+  Può aumentare la latenza di una richiesta; conta soprattutto quando
+  il servizio ha requisiti di latenza stretti.
+- Retention: limita il tempo di conservazione dei log e l'accumulo
+  di spazio. Non elimina i costi di ingestione dei log.
+
+## Cosa farei dopo
+
+- Cognito per autenticare gli utenti dell'applicazione.
+- Separazione dei dati per utente, oltre alla sola autenticazione.
+- Versioni Lambda pubblicate e alias per distinguere i rilasci.
+- Canary deployment per distribuire gradualmente nuove versioni,
+  con monitoraggio e rollback.
+- Modello DynamoDB basato sui reali accessi, usando Query dove opportuno.
+- Backup e prova di ripristino dei dati delle note.
+- Notifiche dell'allarme e protezione del branch main.
+
+## Riproducibilità e pulizia: stato delle verifiche
+
+Il deploy richiede una preparazione iniziale documentata:
+identità e permessi, bucket del backend e provider OIDC.
+
+Il tempo di creazione va misurato; non è garantito inferiore a due minuti.
+La distruzione e ricreazione completa devono essere verificate prima
+di dichiarare conclusa questa parte del progetto.
+
+terraform destroy riguarda le risorse nello stato corrente.
+Non elimina automaticamente il backend S3, il provider OIDC preesistente
+o le policy assegnate all'utente del laboratorio.
