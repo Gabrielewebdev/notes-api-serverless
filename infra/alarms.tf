@@ -1,5 +1,5 @@
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
-  alarm_name          = "notes-api-lambda-errors"
+  alarm_name          = "${var.project_name}-lambda-errors"
   alarm_description   = "At least one Lambda error within five minutes"
   namespace           = "AWS/Lambda"
   metric_name         = "Errors"

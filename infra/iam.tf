@@ -1,5 +1,5 @@
 resource "aws_iam_role" "lambda" {
-  name = "notes-api-lambda"
+  name = "${var.project_name}-lambda"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -12,7 +12,7 @@ resource "aws_iam_role" "lambda" {
 }
 
 resource "aws_iam_role_policy" "lambda" {
-  name = "notes-api-runtime"
+  name = "${var.project_name}-runtime"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({

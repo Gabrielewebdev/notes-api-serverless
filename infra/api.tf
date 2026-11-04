@@ -1,5 +1,5 @@
 resource "aws_apigatewayv2_api" "notes" {
-  name          = "notes-api-serverless"
+  name          = local.function_name
   protocol_type = "HTTP"
 }
 

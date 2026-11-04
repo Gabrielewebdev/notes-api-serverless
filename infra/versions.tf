@@ -23,8 +23,9 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project   = "notes-api-serverless"
-      ManagedBy = "Terraform"
+      Project     = local.function_name
+      Environment = var.environment
+      ManagedBy   = "Terraform"
     }
   }
 }

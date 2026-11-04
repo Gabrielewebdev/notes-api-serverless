@@ -53,28 +53,43 @@ def test_list_empty_table(repository, table):
     table.scan.return_value = {"Items": []}
 
     assert repository.list() == []
-
-
-def test_list_reads_all_pages_and_sorts(repository, table, note):
-    newer = Note(
-        id="note-2",
-        title="Seconda nota",
-        content="",
-        created_at="2026-11-03T11:00:00+00:00",
-    )
-    table.scan.side_effect = [
-        {
-            "Items": [asdict(note)],
-            "LastEvaluatedKey": {"id": note.id},
-        },
-        {"Items": [asdict(newer)]},
-    ]
-
-    assert repository.list() == [newer, note]
-    assert table.scan.call_count == 2
-    table.scan.assert_called_with(
+    table.scan.assert_called_once_with(
         ConsistentRead=True,
-        ExclusiveStartKey={"id": note.id},
+        Limit=20,
+    )
+
+
+def test_list_returns_one_page_without_reading_the_next(
+    repository, table, note
+):
+    table.scan.return_value = {
+        "Items": [asdict(note)],
+        "LastEvaluatedKey": {"id": note.id},
+    }
+
+    page = repository.list_page(limit=1)
+
+    assert page.notes == [note]
+    assert page.next_cursor == note.id
+    table.scan.assert_called_once_with(
+        ConsistentRead=True,
+        Limit=1,
+    )
+
+
+def test_cursor_is_forwarded_and_final_page_has_no_cursor(
+    repository, table, note
+):
+    table.scan.return_value = {"Items": [asdict(note)]}
+
+    page = repository.list_page(limit=5, cursor="previous-note")
+
+    assert page.notes == [note]
+    assert page.next_cursor is None
+    table.scan.assert_called_once_with(
+        ConsistentRead=True,
+        Limit=5,
+        ExclusiveStartKey={"id": "previous-note"},
     )
 
 

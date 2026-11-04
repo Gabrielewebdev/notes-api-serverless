@@ -1,5 +1,5 @@
 resource "aws_lambda_function" "notes" {
-  function_name = "notes-api-serverless"
+  function_name = local.function_name
   description   = "Notes API backed by DynamoDB"
 
   role          = aws_iam_role.lambda.arn

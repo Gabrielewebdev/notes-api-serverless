@@ -22,6 +22,7 @@ def handler(event, context):
     method = event["requestContext"]["http"]["method"]
     path = event["rawPath"]
     body = event.get("body")
+    query = event.get("queryStringParameters") or {}
 
     if event.get("isBase64Encoded", False):
         try:
@@ -31,4 +32,6 @@ def handler(event, context):
         except (ValueError, binascii.Error):
             return response(400, {"error": "Corpo della richiesta non valido"})
 
-    return handle_request(method, path, body, get_service())
+    return handle_request(
+        method, path, body, get_service(), query=query
+    )

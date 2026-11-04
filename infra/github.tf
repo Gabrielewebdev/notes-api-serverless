@@ -1,5 +1,5 @@
 resource "aws_iam_role" "github" {
-  name = "notes-api-github-deploy"
+  name = "${var.project_name}-github-deploy"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -20,7 +20,7 @@ resource "aws_iam_role" "github" {
 }
 
 resource "aws_iam_role_policy" "github" {
-  name = "notes-api-deploy"
+  name = "${var.project_name}-deploy"
   role = aws_iam_role.github.id
 
   policy = jsonencode({
@@ -55,8 +55,8 @@ resource "aws_iam_role_policy" "github" {
           "apigateway:PATCH", "apigateway:DELETE", "apigateway:Tag*"
         ]
         Resource = [
-          "arn:aws:apigateway:us-east-1::/apis/9k4d935soc",
-          "arn:aws:apigateway:us-east-1::/apis/9k4d935soc/*",
+          aws_apigatewayv2_api.notes.arn,
+          "${aws_apigatewayv2_api.notes.arn}/*",
           "arn:aws:apigateway:us-east-1::/tags/*"
         ]
       },

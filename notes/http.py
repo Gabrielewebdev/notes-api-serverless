@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import asdict
 
 from notes.service import NotesService
@@ -17,6 +18,7 @@ def handle_request(
     path: str,
     body: str | None,
     service: NotesService,
+    query: dict | None = None,
 ) -> dict:
     if path == "/notes":
         if method == "POST":
@@ -36,10 +38,36 @@ def handle_request(
             return response(201, asdict(note))
 
         if method == "GET":
-            return response(
-                200,
-                {"notes": [asdict(note) for note in service.list()]},
-            )
+            query = query or {}
+            raw_limit = query.get("limit", "20")
+            cursor = query.get("cursor")
+
+            if (
+                not isinstance(raw_limit, str)
+                or not re.fullmatch(r"[0-9]{1,3}", raw_limit)
+            ):
+                return response(400, {"error": "Limite non valido"})
+
+            limit = int(raw_limit)
+
+            if not 1 <= limit <= 100:
+                return response(
+                    400, {"error": "Il limite deve essere tra 1 e 100"}
+                )
+
+            if "cursor" in query and cursor is None:
+                return response(400, {"error": "Cursore non valido"})
+
+            try:
+                page = service.list_page(limit=limit, cursor=cursor)
+            except ValueError as error:
+                return response(400, {"error": str(error)})
+
+            data = {"notes": [asdict(note) for note in page.notes]}
+            if page.next_cursor is not None:
+                data["next_cursor"] = page.next_cursor
+
+            return response(200, data)
 
         return response(405, {"error": "Metodo non consentito"})
 
