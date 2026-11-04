@@ -12,7 +12,7 @@ resource "aws_iam_role" "github" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:Gabrielewebdev/notes-api-serverless:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = "repo:Gabrielewebdev@147814155/notes-api-serverless@1444754846:ref:refs/heads/main"
         }
       }
     }]
