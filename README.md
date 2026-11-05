@@ -367,9 +367,17 @@ separati e nomi di risorse non in conflitto.
 Il deploy richiede una preparazione iniziale documentata:
 identità e permessi, bucket del backend e provider OIDC.
 
-Il tempo di creazione va misurato; non è garantito inferiore a due minuti.
-La distruzione e ricreazione completa devono essere verificate prima
-di dichiarare conclusa questa parte del progetto.
+Prova di distruzione e ricreazione completata il 5 novembre 2026:
+- Eliminate tutte le 16 risorse applicative; stato Terraform vuoto.
+- Ricreate le 16 risorse dal codice, mantenendo backend e provider OIDC.
+- Nuova API verificata con lo smoke test, inclusa la paginazione.
+- Terraform plan senza differenze dopo la ricreazione.
+- Pipeline OIDC riattivata e completata con successo.
+
+Il tempo della creazione effettiva non è stato misurato correttamente:
+non viene quindi dichiarato un deploy inferiore a due minuti.
+Le note precedenti sono state eliminate: questa è una prova di
+ricreazione dell'infrastruttura, non di ripristino dei dati.
 
 terraform destroy riguarda le risorse nello stato corrente.
 Non elimina automaticamente il backend S3, il provider OIDC preesistente
